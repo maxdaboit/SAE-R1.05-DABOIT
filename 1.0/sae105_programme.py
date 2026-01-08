@@ -420,11 +420,12 @@ def switch_language():
 # ---------------------------------------------------------
 
 LINE_RE = re.compile(
-    r'^(?P<time>\d{2}:\d{2}:\d{2}\.\d+)\s+IP6?\s+'
-    r'(?P<src>[^ >]+)\s*>\s*(?P<dst>[^:]+):\s*'
-    r'(?:Flags\s*\[(?P<flags>[^\]]*)\].*?)?'
-    r'(?:(?:length|len)\s+(?P<length>\d+))?'
+    r"(?P<time>\d{2}:\d{2}:\d{2}(?:\.\d+)?)"          # heure avec ou sans .xxxxxx
+    r".*IP\s+(?P<src>[\w\.-]+)\s*>\s*(?P<dst>[\w\.-]+):"  # src > dst:
+    r"\s+(?:Flags\s+\[(?P<flags>\w+)\],)?"
+    r".*length\s+(?P<length>\d+)"                     # length N obligatoire
 )
+
 
 HOST_PORT_RE = re.compile(r'^(?P<host>.+)\.(?P<port>[^.]+)$')
 

@@ -35,6 +35,15 @@
     {% endif %}
   </h1>
 
+  <!-- Volume total en en-tête -->
+  <p>
+    {% if session.get('lang','fr') == 'fr' %}
+      Volume total : {{ total_bytes }} octets
+    {% else %}
+      Total volume: {{ total_bytes }} bytes
+    {% endif %}
+  </p>
+
   <!-- Boutons -->
   <div class="toolbar">
     <a class="btn" href="{{ url_for('download_csv') }}">
@@ -102,7 +111,7 @@
     {% endif %}
   </section>
 
-  <!-- Rapport complet généré par build_markdown_report (FR ou EN selon current_lang) -->
+  <!-- Rapport complet généré par build_markdown_report -->
   <section>
     {{ html_report|safe }}
   </section>

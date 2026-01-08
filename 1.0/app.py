@@ -51,6 +51,7 @@ def index():
         default_noisy_pkts=core.DEFAULT_NOISY_PKTS,
         default_syn_abs=core.DEFAULT_SYN_ABS,
         default_syn_ratio=core.DEFAULT_SYN_RATIO,
+        
     )
 
 
@@ -173,6 +174,7 @@ def analyser():
         noisy_pkts=th_noisy_pkts,
         syn_abs=th_syn_abs,
         syn_ratio=th_syn_ratio,
+        total_bytes=total_bytes,
     )
 
 

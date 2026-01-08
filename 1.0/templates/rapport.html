@@ -69,7 +69,7 @@
     </a>
   </div>
 
-  <!-- 3 graphes -->
+  <!-- Graphes -->
   <section class="graphs-row">
     {% if charts.get('traffic_by_dst') %}
       <div class="graph-card">
@@ -109,12 +109,30 @@
         <img src="data:image/png;base64,{{ charts['top_ports'] }}" alt="">
       </div>
     {% endif %}
+
+    {% if charts.get('top_sources_bytes') %}
+      <div class="graph-card">
+        <h2>
+          {% if session.get('lang','fr') == 'fr' %}
+            Top sources par volume
+          {% else %}
+            Top sources by volume
+          {% endif %}
+        </h2>
+        <img src="data:image/png;base64,{{ charts['top_sources_bytes'] }}" alt="">
+      </div>
+    {% endif %}
   </section>
 
   <!-- Rapport complet généré par build_markdown_report -->
   <section>
     {{ html_report|safe }}
   </section>
+  <footer style="margin-top:20px; padding-top:10px; border-top:1px solid #e5e7eb; font-size:0.85rem;text-align:center; color:#6b7280;">
+    © 2026 Maxence Daboit – SAE 1.05 Analyse de trafic.
+  </footer>
 </main>
+  
+
 </body>
 </html>

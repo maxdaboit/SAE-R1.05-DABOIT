@@ -23,7 +23,6 @@ for f in UPLOAD_DIR.iterdir():
         except OSError:
             pass
 
-
 # ------------------ langue ------------------ #
 
 @app.before_request
@@ -34,7 +33,6 @@ def set_lang():
     if "lang" not in session:
         session["lang"] = "fr"
     core.current_lang = session["lang"]
-
 
 # ------------------ routes ------------------ #
 
@@ -51,9 +49,7 @@ def index():
         default_noisy_pkts=core.DEFAULT_NOISY_PKTS,
         default_syn_abs=core.DEFAULT_SYN_ABS,
         default_syn_ratio=core.DEFAULT_SYN_RATIO,
-        
     )
-
 
 @app.route("/analyser", methods=["POST"])
 def analyser():
@@ -115,6 +111,7 @@ def analyser():
         syn_per_dst,
         syn_total,
         by_proto,
+        bytes_per_src,
     ) = core.compute_stats(packets)
 
     # 4) détection avec les seuils fournis
@@ -139,7 +136,7 @@ def analyser():
     alerts = scans + dos + noisy + synfloods
 
     # 5) graphes
-    charts = core.build_chart_images(by_src, by_dst, by_dport)
+    charts = core.build_chart_images(by_src, by_dst, by_dport, bytes_per_src)
 
     # 6) rapport complet Markdown -> HTML
     markdown_report = core.build_markdown_report(
@@ -177,7 +174,6 @@ def analyser():
         total_bytes=total_bytes,
     )
 
-
 # ------------------ téléchargements ------------------ #
 
 @app.route("/download/csv")
@@ -201,6 +197,7 @@ def download_csv():
         syn_per_dst,
         syn_total,
         by_proto,
+        bytes_per_src,
     ) = core.compute_stats(packets)
 
     buf = io.BytesIO()
@@ -249,7 +246,6 @@ def download_csv():
     buf.seek(0)
     return send_file(buf, as_attachment=True, download_name="tcpdump_stats_csv.zip")
 
-
 @app.route("/download/xlsx")
 def download_xlsx():
     from openpyxl import Workbook
@@ -274,6 +270,7 @@ def download_xlsx():
         syn_per_dst,
         syn_total,
         by_proto,
+        bytes_per_src,
     ) = core.compute_stats(packets)
 
     wb = Workbook()
@@ -346,11 +343,26 @@ def download_xlsx():
     wssum.append(["Protocoles distincts", len(by_proto)])
     wssum.append(["Paquets SYN totaux", syn_total])
 
+    # Onglet volume par source
+    wsvol = wb.create_sheet("Volume_Sources")
+    wsvol.append(["src_host", "volume_octets"])
+    for host, vol in bytes_per_src.most_common():
+        wsvol.append([host, vol])
+
+    barvol = BarChart()
+    barvol.title = "Top sources par volume"
+    labels = Reference(wsvol, min_col=1, min_row=2, max_row=wsvol.max_row)
+    data = Reference(wsvol, min_col=2, min_row=1, max_row=wsvol.max_row)
+    barvol.add_data(data, titles_from_data=True)
+    barvol.set_categories(labels)
+    barvol.y_axis.title = "Octets"
+    barvol.x_axis.title = "Source"
+    wsvol.add_chart(barvol, "E2")
+
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
     return send_file(buf, as_attachment=True, download_name="rapport_tcpdump.xlsx")
-
 
 if __name__ == "__main__":
     import threading
@@ -364,5 +376,3 @@ if __name__ == "__main__":
 
     threading.Thread(target=open_browser, daemon=True).start()
     app.run(debug=False)
-
-

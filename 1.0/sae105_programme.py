@@ -513,6 +513,7 @@ def compute_stats(packets):
     syn_per_dst = Counter()
     syn_total = 0
     by_proto = Counter()
+    bytes_per_src = Counter()  # <-- nouveau
 
     for p in packets:
         sh = p['src_host']
@@ -520,6 +521,7 @@ def compute_stats(packets):
         dp = p['dst_port']
         fl = p['flags']
         proto = p.get('proto', 'OTHER')
+        length = p['length']
 
         by_src[sh] += 1
         by_dst[dh] += 1
@@ -528,13 +530,31 @@ def compute_stats(packets):
             by_dport[dp] += 1
         by_flow[(sh, dh, dp)] += 1
         dests_per_src[sh].add(dh)
-        total_bytes += p['length']
+
+        total_bytes += length
+        bytes_per_src[sh] += length  # <-- cumul par source
 
         if fl:
             flags_counter[fl] += 1
             if is_syn_flag(fl):
                 syn_per_dst[dh] += 1
                 syn_total += 1
+
+    flows_per_src = Counter({s: len(dests) for s, dests in dests_per_src.items()})
+
+    return (
+        by_src,
+        by_dst,
+        by_dport,
+        by_flow,
+        flows_per_src,
+        total_bytes,
+        flags_counter,
+        syn_per_dst,
+        syn_total,
+        by_proto,
+        bytes_per_src,   # <-- nouveau élément de retour
+    )
 
     flows_per_src = Counter({s: len(dests) for s, dests in dests_per_src.items()})
     return by_src, by_dst, by_dport, by_flow, flows_per_src, total_bytes, flags_counter, syn_per_dst, syn_total, by_proto
@@ -800,9 +820,10 @@ def fig_to_base64(fig):
     plt.close(fig)
     return b64
 
-def build_chart_images(by_src, by_dst, by_dport):
+def build_chart_images(by_src, by_dst, by_dport, bytes_per_src):
     images = {}
 
+    # --- Graphe 1 : trafic par destination (existant) ---
     if by_dst:
         labels = []
         sizes = []
@@ -813,14 +834,17 @@ def build_chart_images(by_src, by_dst, by_dport):
         if other > 0:
             labels.append("Autres")
             sizes.append(other)
+
         fig1, ax1 = plt.subplots(figsize=(4, 4))
-        ax1.pie(sizes, labels=labels, autopct='%1.1f%%', startangle=140)
+        ax1.pie(sizes, labels=labels, autopct="%1.1f%%", startangle=140)
         ax1.set_title("Répartition du trafic par destination")
         images["traffic_by_dst"] = fig_to_base64(fig1)
 
+    # --- Graphe 2 : sources principales (existant) ---
     if by_src:
         src_labels = [str(h) for h, _ in by_src.most_common(8)]
         src_values = [c for _, c in by_src.most_common(8)]
+
         fig2, ax2 = plt.subplots(figsize=(5, 3))
         ax2.bar(range(len(src_labels)), src_values)
         ax2.set_xticks(range(len(src_labels)))
@@ -829,9 +853,11 @@ def build_chart_images(by_src, by_dst, by_dport):
         ax2.set_title("Principales sources de trafic")
         images["top_sources"] = fig_to_base64(fig2)
 
+    # --- Graphe 3 : ports de destination (existant) ---
     if by_dport:
         port_labels = [str(p) for p, _ in by_dport.most_common(8)]
         port_values = [c for _, c in by_dport.most_common(8)]
+
         fig3, ax3 = plt.subplots(figsize=(5, 3))
         ax3.bar(range(len(port_labels)), port_values)
         ax3.set_xticks(range(len(port_labels)))
@@ -839,6 +865,22 @@ def build_chart_images(by_src, by_dst, by_dport):
         ax3.set_ylabel("Paquets")
         ax3.set_title("Ports de destination les plus utilisés")
         images["top_ports"] = fig_to_base64(fig3)
+
+    # --- Graphe 4 : NOUVEAU – top sources par volume d'octets ---
+    if bytes_per_src:
+        vol_labels = []
+        vol_values = []
+        for src, vol in bytes_per_src.most_common(8):
+            vol_labels.append(str(src))
+            vol_values.append(vol / 1024.0)  # en Ko
+
+        fig4, ax4 = plt.subplots(figsize=(5, 3))
+        ax4.bar(range(len(vol_labels)), vol_values, color="#f97316")
+        ax4.set_xticks(range(len(vol_labels)))
+        ax4.set_xticklabels(vol_labels, rotation=45, ha="right", fontsize=8)
+        ax4.set_ylabel("Volume (Ko)")
+        ax4.set_title("Top sources par volume")
+        images["top_sources_bytes"] = fig_to_base64(fig4)
 
     return images
 

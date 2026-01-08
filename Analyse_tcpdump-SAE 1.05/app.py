@@ -1,21 +1,62 @@
-from flask import Flask, render_template, request, redirect, url_for, send_file, session
-from werkzeug.utils import secure_filename
-from pathlib import Path
-import io
-import csv
-import zipfile
-import markdown
+# --- app.py ---
+# -*- coding: utf-8 -*-
 
-import sae105_programme as core  # ton script d'analyse
+"""
+Application Flask - SAE 1.05
+- Upload d'un fichier texte (sortie tcpdump)
+- Analyse via sae105_programme.py (core)
+- Génération d'un rapport Markdown converti en HTML
+- Téléchargement des CSV (zip) et d'un Excel (xlsx)
+"""
+
+from __future__ import annotations
+
+import csv
+import io
+import zipfile
+from pathlib import Path
+
+import markdown
+from flask import (
+    Flask,
+    render_template,
+    request,
+    redirect,
+    url_for,
+    send_file,
+    session,
+    flash,
+)
+from werkzeug.utils import secure_filename
+
+import sae105_programme as core  # module d'analyse (script "coeur")
+
+
+# -----------------------------------------------------------------------------
+# Configuration Flask
+# -----------------------------------------------------------------------------
 
 app = Flask(__name__)
+
+# IMPORTANT : change cette clé en prod (variable d'environnement, etc.)
+# Elle sert à signer les sessions et les messages flash.
 app.secret_key = "change_me"
 
 BASE_DIR = Path(__file__).resolve().parent
 UPLOAD_DIR = BASE_DIR / "uploads"
 UPLOAD_DIR.mkdir(exist_ok=True)
 
-# Nettoyage au démarrage : on supprime les anciens fichiers du dossier uploads
+# Extensions acceptées :
+# - Ici on accepte volontairement du "texte" (sortie tcpdump),
+#   pas du .pcap brut, sinon parse_tcpdump_file ne pourra pas lire.
+ALLOWED_EXTS = {".txt", ".log", ".dump"}
+
+
+# -----------------------------------------------------------------------------
+# Nettoyage au démarrage (optionnel)
+# -----------------------------------------------------------------------------
+# À éviter en prod si plusieurs utilisateurs / plusieurs sessions :
+# ici c'est OK pour un petit projet local.
 for f in UPLOAD_DIR.iterdir():
     if f.is_file():
         try:
@@ -23,22 +64,38 @@ for f in UPLOAD_DIR.iterdir():
         except OSError:
             pass
 
-# ------------------ langue ------------------ #
 
+# -----------------------------------------------------------------------------
+# Gestion de la langue (session -> core.current_lang)
+# -----------------------------------------------------------------------------
 @app.before_request
-def set_lang():
+def set_lang() -> None:
+    """
+    - Si l'URL contient ?lang=fr ou ?lang=en : on met à jour la session
+    - Sinon : langue par défaut = fr
+    - On pousse aussi la langue dans le module core pour qu'il génère le rapport
+      dans la bonne langue.
+    """
     lang = request.args.get("lang")
     if lang in ("fr", "en"):
         session["lang"] = lang
+
     if "lang" not in session:
         session["lang"] = "fr"
+
     core.current_lang = session["lang"]
 
-# ------------------ routes ------------------ #
 
+# -----------------------------------------------------------------------------
+# Routes principales
+# -----------------------------------------------------------------------------
 @app.route("/")
 def index():
-    # valeurs par défaut = celles de ton script
+    """
+    Page d'accueil :
+    - formulaire d'upload
+    - affichage des seuils par défaut (venant de core)
+    """
     return render_template(
         "index.html",
         lang=session.get("lang", "fr"),
@@ -51,13 +108,32 @@ def index():
         default_syn_ratio=core.DEFAULT_SYN_RATIO,
     )
 
+
 @app.route("/analyser", methods=["POST"])
 def analyser():
+    """
+    Endpoint d'analyse :
+    1) Récupère le fichier uploadé
+    2) Le sauvegarde dans uploads/
+    3) Parse + compute_stats + detect + charts + rapport HTML
+    4) Rend la page rapport.html
+    """
     f = request.files.get("file")
     if not f or f.filename == "":
+        flash("Aucun fichier sélectionné.", "error")
         return redirect(url_for("index"))
 
-    # Supprimer le précédent fichier analysé si présent
+    # Vérifier extension
+    original_name = f.filename
+    ext = Path(original_name).suffix.lower()
+    if ext not in ALLOWED_EXTS:
+        flash(
+            "Format non supporté. Merci d'envoyer une sortie texte de tcpdump (.txt/.log/.dump), pas un .pcap brut.",
+            "error",
+        )
+        return redirect(url_for("index"))
+
+    # Supprimer le précédent fichier analysé si présent (stocké en session)
     last = session.get("last_file")
     if last:
         p_last = Path(last)
@@ -67,25 +143,28 @@ def analyser():
             except OSError:
                 pass
 
-    filename = secure_filename(f.filename)
+    # Sauvegarde du fichier uploadé
+    filename = secure_filename(original_name)
     fpath = UPLOAD_DIR / filename
     f.save(fpath)
 
-    # 1) parse tcpdump
+    # 1) parse tcpdump texte
     packets, first_ts, last_ts = core.parse_tcpdump_file(fpath)
     if not packets:
+        flash("Aucun paquet détecté dans ce fichier (vérifie que c'est bien une sortie texte de tcpdump).", "error")
         return redirect(url_for("index"))
 
     # 2) récupérer les seuils envoyés par le formulaire
-    def get_int(name, default):
-        v = request.form.get(name, "").strip()
+    # -> si invalide : fallback vers les valeurs par défaut du core
+    def get_int(name: str, default: int) -> int:
+        v = (request.form.get(name, "") or "").strip()
         try:
             return int(v) if v else default
         except ValueError:
             return default
 
-    def get_float(name, default):
-        v = request.form.get(name, "").strip()
+    def get_float(name: str, default: float) -> float:
+        v = (request.form.get(name, "") or "").strip()
         try:
             return float(v) if v else default
         except ValueError:
@@ -93,11 +172,11 @@ def analyser():
 
     th_scan_ports = get_int("scan_ports", core.DEFAULT_SCAN_PORTS)
     th_dos_abs = get_int("dos_abs", core.DEFAULT_DOS_ABS)
-    th_dos_pct = get_float("dos_pct", core.DEFAULT_DOS_PCT)  # % entier
+    th_dos_pct = get_float("dos_pct", core.DEFAULT_DOS_PCT)  # % (ex: 30)
     th_noisy_dests = get_int("noisy_dests", core.DEFAULT_NOISY_DESTS)
     th_noisy_pkts = get_int("noisy_pkts", core.DEFAULT_NOISY_PKTS)
     th_syn_abs = get_int("syn_abs", core.DEFAULT_SYN_ABS)
-    th_syn_ratio = get_float("syn_ratio", core.DEFAULT_SYN_RATIO)  # %
+    th_syn_ratio = get_float("syn_ratio", core.DEFAULT_SYN_RATIO)  # % (ex: 50)
 
     # 3) stats
     (
@@ -114,7 +193,7 @@ def analyser():
         bytes_per_src,
     ) = core.compute_stats(packets)
 
-    # 4) détection avec les seuils fournis
+    # 4) détection (avec conversion % -> ratio)
     scans = core.detect_port_scans(by_flow, threshold_ports=th_scan_ports)
     dos = core.detect_dos(
         by_dst,
@@ -135,7 +214,7 @@ def analyser():
     )
     alerts = scans + dos + noisy + synfloods
 
-    # 5) graphes
+    # 5) graphes (images base64)
     charts = core.build_chart_images(by_src, by_dst, by_dport, bytes_per_src)
 
     # 6) rapport complet Markdown -> HTML
@@ -156,7 +235,7 @@ def analyser():
     )
     html_report = markdown.markdown(markdown_report, extensions=["tables"])
 
-    # stocker pour download CSV/Excel
+    # Stocker pour les endpoints de download
     session["last_file"] = str(fpath)
 
     return render_template(
@@ -174,18 +253,31 @@ def analyser():
         total_bytes=total_bytes,
     )
 
-# ------------------ téléchargements ------------------ #
 
+# -----------------------------------------------------------------------------
+# Téléchargements CSV (ZIP)
+# -----------------------------------------------------------------------------
 @app.route("/download/csv")
 def download_csv():
+    """
+    Recalcule les stats depuis le dernier fichier analysé (stocké en session),
+    puis renvoie un zip de CSV en mémoire.
+    """
     last = session.get("last_file")
     if not last:
-        return redirect(url_for("index"))
-    path = Path(last)
-    if not path.exists():
+        flash("Aucune analyse en mémoire.", "error")
         return redirect(url_for("index"))
 
-    packets, first_ts, last_ts = core.parse_tcpdump_file(path)
+    path = Path(last)
+    if not path.exists():
+        flash("Fichier d'analyse introuvable.", "error")
+        return redirect(url_for("index"))
+
+    packets, _first_ts, _last_ts = core.parse_tcpdump_file(path)
+    if not packets:
+        flash("Impossible de relire le fichier d'analyse.", "error")
+        return redirect(url_for("index"))
+
     (
         by_src,
         by_dst,
@@ -202,12 +294,14 @@ def download_csv():
 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        # CSV brut des paquets
         raw_csv = io.StringIO()
         writer = csv.DictWriter(raw_csv, fieldnames=list(packets[0].keys()))
         writer.writeheader()
         writer.writerows(packets)
         z.writestr("packets_raw.csv", raw_csv.getvalue())
 
+        # Stats sources
         src_csv = io.StringIO()
         w = csv.writer(src_csv)
         w.writerow(["src_host", "packets"])
@@ -215,6 +309,7 @@ def download_csv():
             w.writerow([host, count])
         z.writestr("stats_sources.csv", src_csv.getvalue())
 
+        # Stats destinations
         dst_csv = io.StringIO()
         w = csv.writer(dst_csv)
         w.writerow(["dst_host", "packets"])
@@ -222,6 +317,7 @@ def download_csv():
             w.writerow([host, count])
         z.writestr("stats_destinations.csv", dst_csv.getvalue())
 
+        # Stats ports
         port_csv = io.StringIO()
         w = csv.writer(port_csv)
         w.writerow(["dst_port", "packets"])
@@ -229,6 +325,7 @@ def download_csv():
             w.writerow([port, count])
         z.writestr("stats_ports.csv", port_csv.getvalue())
 
+        # Stats SYN par destination
         syn_csv = io.StringIO()
         w = csv.writer(syn_csv)
         w.writerow(["dst_host", "syn_packets"])
@@ -236,6 +333,7 @@ def download_csv():
             w.writerow([dst, count])
         z.writestr("stats_syn_per_dst.csv", syn_csv.getvalue())
 
+        # Stats protocoles
         proto_csv = io.StringIO()
         w = csv.writer(proto_csv)
         w.writerow(["protocol", "packets"])
@@ -243,22 +341,44 @@ def download_csv():
             w.writerow([proto, count])
         z.writestr("stats_protocols.csv", proto_csv.getvalue())
 
+        # Volume par source (bonus)
+        vol_csv = io.StringIO()
+        w = csv.writer(vol_csv)
+        w.writerow(["src_host", "bytes"])
+        for src, b in bytes_per_src.most_common():
+            w.writerow([src, b])
+        z.writestr("stats_bytes_per_src.csv", vol_csv.getvalue())
+
     buf.seek(0)
     return send_file(buf, as_attachment=True, download_name="tcpdump_stats_csv.zip")
 
+
+# -----------------------------------------------------------------------------
+# Téléchargement Excel (XLSX)
+# -----------------------------------------------------------------------------
 @app.route("/download/xlsx")
 def download_xlsx():
+    """
+    Génère un .xlsx en mémoire avec plusieurs onglets et quelques graphes.
+    """
     from openpyxl import Workbook
     from openpyxl.chart import PieChart, BarChart, Reference
 
     last = session.get("last_file")
     if not last:
-        return redirect(url_for("index"))
-    path = Path(last)
-    if not path.exists():
+        flash("Aucune analyse en mémoire.", "error")
         return redirect(url_for("index"))
 
-    packets, first_ts, last_ts = core.parse_tcpdump_file(path)
+    path = Path(last)
+    if not path.exists():
+        flash("Fichier d'analyse introuvable.", "error")
+        return redirect(url_for("index"))
+
+    packets, _first_ts, _last_ts = core.parse_tcpdump_file(path)
+    if not packets:
+        flash("Impossible de relire le fichier d'analyse.", "error")
+        return redirect(url_for("index"))
+
     (
         by_src,
         by_dst,
@@ -276,12 +396,14 @@ def download_xlsx():
     wb = Workbook()
     wb.remove(wb.active)
 
+    # Onglet Raw
     wsraw = wb.create_sheet("Raw")
     headers = list(packets[0].keys())
     wsraw.append(headers)
     for p in packets:
         wsraw.append([p.get(h) for h in headers])
 
+    # Onglet Sources + camembert
     wssrc = wb.create_sheet("Sources")
     wssrc.append(["src_host", "packets"])
     for host, count in by_src.most_common():
@@ -294,6 +416,7 @@ def download_xlsx():
     piesrc.set_categories(labels)
     wssrc.add_chart(piesrc, "E2")
 
+    # Onglet Destinations + camembert
     wsdst = wb.create_sheet("Destinations")
     wsdst.append(["dst_host", "packets"])
     for host, count in by_dst.most_common():
@@ -306,6 +429,7 @@ def download_xlsx():
     piedst.set_categories(labels)
     wsdst.add_chart(piedst, "E2")
 
+    # Onglet Ports + bar chart
     wsport = wb.create_sheet("Ports")
     wsport.append(["dst_port", "packets"])
     for port, count in by_dport.most_common():
@@ -320,6 +444,7 @@ def download_xlsx():
     barport.x_axis.title = "Port"
     wsport.add_chart(barport, "E2")
 
+    # Onglet SYN + bar chart
     wssyn = wb.create_sheet("SYN")
     wssyn.append(["dst_host", "syn_packets"])
     for dst, count in syn_per_dst.most_common():
@@ -333,6 +458,7 @@ def download_xlsx():
     barsyn.y_axis.title = "SYN packets"
     wssyn.add_chart(barsyn, "E2")
 
+    # Onglet Résumé
     wssum = wb.create_sheet("Résumé")
     wssum.append(["Indicateur", "Valeur"])
     wssum.append(["Paquets analysés", len(packets)])
@@ -343,7 +469,7 @@ def download_xlsx():
     wssum.append(["Protocoles distincts", len(by_proto)])
     wssum.append(["Paquets SYN totaux", syn_total])
 
-    # Onglet volume par source
+    # Onglet volume par source + bar chart
     wsvol = wb.create_sheet("Volume_Sources")
     wsvol.append(["src_host", "volume_octets"])
     for host, vol in bytes_per_src.most_common():
@@ -364,15 +490,20 @@ def download_xlsx():
     buf.seek(0)
     return send_file(buf, as_attachment=True, download_name="rapport_tcpdump.xlsx")
 
+
+# -----------------------------------------------------------------------------
+# Démarrage local
+# -----------------------------------------------------------------------------
 if __name__ == "__main__":
     import threading
     import time
     import webbrowser
 
     def open_browser():
-        # petit délai pour laisser le serveur démarrer
         time.sleep(1)
         webbrowser.open("http://127.0.0.1:5000/")
 
     threading.Thread(target=open_browser, daemon=True).start()
+
+    # debug=False volontairement pour éviter le double lancement
     app.run(debug=False)

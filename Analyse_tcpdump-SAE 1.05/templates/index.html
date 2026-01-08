@@ -1,8 +1,10 @@
+<!-- --- templates/index.html --- -->
 <!DOCTYPE html>
 <html lang="{{ lang }}">
 <head>
   <meta charset="utf-8">
   <title>{{ 'Analyse tcpdump - SAE 1.05' if lang=='fr' else 'tcpdump analysis - SAE 1.05' }}</title>
+
   <style>
     body { font-family: system-ui, sans-serif; background:#f3f4f6; margin:0; }
     .container { max-width: 900px; margin:40px auto; background:#fff; padding:24px;
@@ -20,72 +22,105 @@
     button { margin-top:14px; padding:6px 12px; border-radius:6px;
              border:1px solid #d1d5db; background:#2563eb; color:white; cursor:pointer; }
     select { padding:4px 8px; }
+
+    /* Message flash (erreurs / infos) */
+    .flash { padding:10px 12px; border-radius:8px; margin-bottom:14px; }
+    .flash.error { background:#fee2e2; color:#991b1b; border:1px solid #fecaca; }
+    .flash.info  { background:#e0f2fe; color:#075985; border:1px solid #bae6fd; }
   </style>
 </head>
+
 <body>
 <div class="container">
   <div class="topbar">
     <h1>{{ 'Analyse tcpdump - SAE 1.05' if lang=='fr' else 'tcpdump analysis - SAE 1.05' }}</h1>
+
+    <!-- Sélecteur de langue : ajoute ?lang=fr|en dans l'URL -->
     <select id="lang-switch">
       <option value="fr" {{ 'selected' if lang=='fr' else '' }}>FR</option>
       <option value="en" {{ 'selected' if lang=='en' else '' }}>EN</option>
     </select>
   </div>
 
+  <!-- Zone pour afficher les messages flash (erreurs : mauvais format, aucun paquet, etc.) -->
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, msg in messages %}
+        <div class="flash {{ category }}">{{ msg }}</div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
   <form id="upload-form" action="{{ url_for('analyser') }}" method="post" enctype="multipart/form-data">
-    <input type="file" id="file-input" name="file" accept=".txt,.log,.pcap" style="display:none">
+    <!-- IMPORTANT :
+         Le parseur lit du TEXTE (sortie tcpdump), pas du .pcap brut.
+         Donc on évite d'afficher ".pcap" dans accept. -->
+    <input type="file" id="file-input" name="file" accept=".txt,.log,.dump" style="display:none">
+
     <div id="dropzone" class="dropzone">
       <p id="dz-text">
         {{ 'Glissez-déposez votre fichier tcpdump ici ou cliquez pour le sélectionner.'
            if lang=='fr'
-           else 'Drag & drop your tcpdump file here or click to select it.' }}
+           else 'Drag & drop your tcpdump text file here or click to select it.' }}
+      </p>
+      <p style="margin:8px 0 0 0; font-size:0.85rem; color:#6b7280;">
+        {{ "Format attendu : sortie texte de tcpdump (ex: tcpdump -nn -tttt -r capture.pcap > capture.txt)"
+           if lang=='fr'
+           else "Expected format: tcpdump text output (e.g., tcpdump -nn -tttt -r capture.pcap > capture.txt)" }}
       </p>
     </div>
 
     <h2>{{ 'Seuils de détection' if lang=='fr' else 'Detection thresholds' }}</h2>
+
     <div class="thresholds">
       <label>
         {{ 'Ports distincts (scan) ≥' if lang=='fr' else 'Distinct ports (scan) ≥' }}
         <input type="number" name="scan_ports" value="{{ default_scan_ports }}">
       </label>
+
       <label>
         {{ 'Paquets vers une IP (DoS) ≥' if lang=='fr' else 'Packets to one IP (DoS) ≥' }}
         <input type="number" name="dos_abs" value="{{ default_dos_abs }}">
       </label>
+
       <label>
         {{ 'Pourcentage trafic (DoS) ≥' if lang=='fr' else 'Traffic percentage (DoS) ≥' }}
-        <input type="number" name="dos_pct" value="{{ default_dos_pct }}">
+        <!-- step pour autoriser des décimales -->
+        <input type="number" name="dos_pct" value="{{ default_dos_pct }}" step="0.1">
       </label>
+
       <label>
         {{ 'Destinations distinctes (noisy) ≥' if lang=='fr' else 'Distinct destinations (noisy) ≥' }}
         <input type="number" name="noisy_dests" value="{{ default_noisy_dests }}">
       </label>
+
       <label>
         {{ 'Paquets par source (noisy) ≥' if lang=='fr' else 'Packets per source (noisy) ≥' }}
         <input type="number" name="noisy_pkts" value="{{ default_noisy_pkts }}">
       </label>
+
       <label>
         {{ 'Paquets SYN (SYN flood) ≥' if lang=='fr' else 'SYN packets (SYN flood) ≥' }}
         <input type="number" name="syn_abs" value="{{ default_syn_abs }}">
       </label>
+
       <label>
-        {{ 'Ratio SYN flood (%)' if lang=='fr' else 'SYN flood ratio (%)' }}
-        <input type="number" name="syn_ratio" value="{{ default_syn_ratio }}">
+        {{ 'Ratio SYN flood (%) ≥' if lang=='fr' else 'SYN flood ratio (%) ≥' }}
+        <input type="number" name="syn_ratio" value="{{ default_syn_ratio }}" step="0.1">
       </label>
     </div>
 
     <button type="submit">{{ 'Analyser' if lang=='fr' else 'Analyse' }}</button>
-      <footer style="margin-top:20px; padding-top:10px; border-top:1px solid #e5e7eb; font-size:0.85rem; color:#6b7280; text-align:center;">
-    © 2026 Maxence Daboit – SAE 1.05 Analyse de trafic.
-  </footer>
 
+    <footer style="margin-top:20px; padding-top:10px; border-top:1px solid #e5e7eb; font-size:0.85rem; color:#6b7280; text-align:center;">
+      © 2026 Maxence Daboit – SAE 1.05 Analyse de trafic.
+    </footer>
   </form>
 </div>
 
 <script>
 const dz = document.getElementById('dropzone');
 const fileInput = document.getElementById('file-input');
-const form = document.getElementById('upload-form');
 const dzText = document.getElementById('dz-text');
 
 function setDropzoneText(file) {
@@ -93,35 +128,37 @@ function setDropzoneText(file) {
   dzText.textContent = file.name;
 }
 
+// Click -> ouvre la fenêtre fichier
 dz.addEventListener('click', () => fileInput.click());
 
+// Drag & drop UX
 dz.addEventListener('dragover', e => {
   e.preventDefault();
   dz.classList.add('dragover');
 });
 
-dz.addEventListener('dragleave', e => {
+dz.addEventListener('dragleave', () => {
   dz.classList.remove('dragover');
 });
 
 dz.addEventListener('drop', e => {
   e.preventDefault();
   dz.classList.remove('dragover');
+
   if (e.dataTransfer.files.length) {
     const file = e.dataTransfer.files[0];
     fileInput.files = e.dataTransfer.files;
-    setDropzoneText(file);      // affiche le nom du fichier
-    // form.submit();           // décommente si tu veux lancer l'analyse direct
+    setDropzoneText(file);
   }
 });
 
 fileInput.addEventListener('change', () => {
   if (fileInput.files.length) {
-    setDropzoneText(fileInput.files[0]);  // clic → nom affiché
-    // form.submit();
+    setDropzoneText(fileInput.files[0]);
   }
 });
 
+// Switch langue -> met ?lang=fr|en
 document.getElementById('lang-switch').addEventListener('change', (e) => {
   const lang = e.target.value;
   const url = new URL(window.location.href);

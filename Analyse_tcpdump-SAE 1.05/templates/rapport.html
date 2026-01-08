@@ -1,3 +1,4 @@
+<!-- rapport.html -->
 <!DOCTYPE html>
 <html lang="{{ session.get('lang','fr') }}">
 <head>
@@ -9,21 +10,45 @@
       Analysis report – {{ filename }}
     {% endif %}
   </title>
+
   <style>
     body { font-family: system-ui, sans-serif; background:#f3f4f6; margin:0; }
     main { max-width: 1100px; margin:20px auto; padding:16px; background:#ffffff; border-radius:8px; }
     h1 { margin-top:0; }
-    .graphs-row { display:flex; flex-wrap:wrap; gap:14px; margin-bottom:20px; }
-    .graph-card { background:#f9fafb; padding:10px; border-radius:8px; flex:1 1 30%; min-width:260px; }
-    .graph-card img { max-width:100%; border-radius:6px; }
+
+    /* --- GRAPHS : 2 en haut + 2 en dessous --- */
+    .graphs-row{
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr)); /* 2 colonnes */
+      gap: 14px;
+      margin-bottom: 20px;
+    }
+
+    .graph-card{
+      background:#f9fafb;
+      padding:10px;
+      border-radius:8px;
+    }
+
+    .graph-card img { max-width:100%; border-radius:6px; height:auto; }
+
+    /* Responsive : mobile = 1 colonne */
+    @media (max-width: 800px){
+      .graphs-row{ grid-template-columns: 1fr; }
+    }
+
+    /* Tables */
     table { border-collapse:collapse; width:100%; margin:14px 0; font-size:0.9rem; }
     th, td { border:1px solid #e5e7eb; padding:6px 8px; text-align:left; }
     th { background:#f9fafb; }
+
+    /* Toolbar */
     .toolbar { margin-bottom:12px; display:flex; gap:8px; flex-wrap:wrap; }
     .btn { padding:6px 10px; border-radius:6px; border:1px solid #d1d5db;
            background:#fff; text-decoration:none; color:#111827; }
   </style>
 </head>
+
 <body>
 <main>
   <!-- Titre principal -->
@@ -53,6 +78,7 @@
         Download CSVs
       {% endif %}
     </a>
+
     <a class="btn" href="{{ url_for('download_xlsx') }}">
       {% if session.get('lang','fr') == 'fr' %}
         Télécharger Excel
@@ -60,6 +86,7 @@
         Download Excel
       {% endif %}
     </a>
+
     <a class="btn" href="{{ url_for('index') }}">
       {% if session.get('lang','fr') == 'fr' %}
         Nouvelle analyse
@@ -69,7 +96,7 @@
     </a>
   </div>
 
-  <!-- Graphes -->
+  <!-- Graphes (2 + 2) -->
   <section class="graphs-row">
     {% if charts.get('traffic_by_dst') %}
       <div class="graph-card">
@@ -128,11 +155,10 @@
   <section>
     {{ html_report|safe }}
   </section>
+
   <footer style="margin-top:20px; padding-top:10px; border-top:1px solid #e5e7eb; font-size:0.85rem;text-align:center; color:#6b7280;">
     © 2026 Maxence Daboit – SAE 1.05 Analyse de trafic.
   </footer>
 </main>
-  
-
 </body>
 </html>

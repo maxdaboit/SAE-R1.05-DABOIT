@@ -22,7 +22,7 @@ Flask web app that analyzes a text tcpdump output, generates a report (Markdown 
 
 RUN USING THE .EXE (Windows)
 - Run app.exe (double-click or from a terminal).
-- Then open your browser at http://127.0.0.1:5000/*
+- Then open your browser at http://127.0.0.1:5000/
 
 RUN USING PYTHON
 1) Install Python 3.10+ on your system.

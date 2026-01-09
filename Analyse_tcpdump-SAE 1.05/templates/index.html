@@ -7,7 +7,7 @@
   <style>
     body { font-family: system-ui, sans-serif; background:#f3f4f6; margin:0; }
     .container { max-width: 900px; margin:40px auto; background:#fff; padding:24px;
-                 border-radius:12px; box-shadow:0 10px 25px rgba(15,23,42,.08); }
+                border-radius:12px; box-shadow:0 10px 25px rgba(15,23,42,.08); }
     .topbar { display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; }
     .dropzone {
       border:2px dashed #94a3b8; border-radius:10px; padding:30px;
@@ -19,7 +19,7 @@
     label { font-size:0.9rem; }
     input[type=number] { width:100%; padding:4px 6px; box-sizing:border-box; }
     button { margin-top:14px; padding:6px 12px; border-radius:6px;
-             border:1px solid #d1d5db; background:#2563eb; color:white; cursor:pointer; }
+            border:1px solid #d1d5db; background:#2563eb; color:white; cursor:pointer; }
     select { padding:4px 8px; }
 
     .flash { padding:10px 12px; border-radius:8px; margin-bottom:14px; }
@@ -53,13 +53,13 @@
     <div id="dropzone" class="dropzone">
       <p id="dz-text">
         {{ 'Glissez-déposez votre fichier tcpdump ici ou cliquez pour le sélectionner.'
-           if lang=='fr'
-           else 'Drag & drop your tcpdump text file here or click to select it.' }}
+          if lang=='fr'
+          else 'Drag & drop your tcpdump text file here or click to select it.' }}
       </p>
       <p style="margin:8px 0 0 0; font-size:0.85rem; color:#6b7280;">
-        {{ "Format attendu : sortie texte de tcpdump (ex: tcpdump -nn -tttt -r capture.pcap > capture.txt)"
-           if lang=='fr'
-           else "Expected format: tcpdump text output (e.g., tcpdump -nn -tttt -r capture.pcap > capture.txt)" }}
+        {{ "Format attendu : tcpdump-capture.txt)"
+          if lang=='fr'
+          else "Expected format: tcpdump-capture.txt)" }}
       </p>
     </div>
 

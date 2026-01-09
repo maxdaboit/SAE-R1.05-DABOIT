@@ -32,4 +32,4 @@ RUN USING PYTHON
    pip install flask markdown matplotlib openpyxl
 5) Launch the application:
    python app.py
-6) Open your browser at: http://127.0.0.1:5000/
+6) Open your browser at: http://127.0.0.1:5000/ 

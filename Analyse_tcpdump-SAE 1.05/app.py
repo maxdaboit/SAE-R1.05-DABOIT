@@ -6,7 +6,7 @@ Application Flask - SAE 1.05
 - Upload d'un fichier texte (sortie tcpdump)
 - Analyse via sae105_programme.py (core)
 - Génération d'un rapport Markdown converti en HTML
-- Téléchargement des CSV (zip) et d'un Excel (xlsx)
+- Téléchargement des CSV (zip), d'un Excel (xlsx) et du rapport Markdown (.md)
 """
 
 from __future__ import annotations
@@ -165,6 +165,7 @@ def analyser():
 
     charts = core.build_chart_images(by_src, by_dst, by_dport, bytes_per_src)
 
+    # --- Rapport Markdown + HTML + sauvegarde .md ---
     markdown_report = core.build_markdown_report(
         packets,
         by_src,
@@ -180,9 +181,15 @@ def analyser():
         syn_total,
         by_proto,
     )
+
+    # Sauvegarde du rapport Markdown à côté du fichier uploadé
+    md_path = fpath.with_suffix(".md")
+    md_path.write_text(markdown_report, encoding="utf-8")
+
     html_report = markdown.markdown(markdown_report, extensions=["tables"])
 
     session["last_file"] = str(fpath)
+    session["last_md"] = str(md_path)
 
     return render_template(
         "rapport.html",
@@ -290,9 +297,8 @@ def download_csv():
             w.writerow([src, b])
         z.writestr("stats_bytes_per_src.csv", vol_csv.getvalue())
 
-        # Flow table (NEW) - compatible avec core.compute_flow_table() corrigé
+        # Flow table
         flow_rows = core.compute_flow_table(packets)
-
         flows_csv = io.StringIO()
         w = csv.writer(flows_csv)
         w.writerow([
@@ -302,7 +308,6 @@ def download_csv():
             "first_seen_sec", "last_seen_sec",
             "duration_s"
         ])
-
         for r in flow_rows:
             fs = r.get("first_seen_sec", "")
             ls = r.get("last_seen_sec", "")
@@ -313,7 +318,6 @@ def download_csv():
                 r.get("proto"), r.get("packets"), r.get("bytes"),
                 fs, ls, dur
             ])
-
         z.writestr("flows.csv", flows_csv.getvalue())
 
     buf.seek(0)
@@ -366,7 +370,7 @@ def download_xlsx():
     for p in packets:
         wsraw.append([p.get(h) for h in headers])
 
-    # Onglet Flows (NEW)
+    # Onglet Flows
     wsflows = wb.create_sheet("Flows")
     wsflows.append([
         "src_host", "src_port",
@@ -375,7 +379,6 @@ def download_xlsx():
         "first_seen_sec", "last_seen_sec",
         "duration_s"
     ])
-
     flow_rows = core.compute_flow_table(packets)
     for r in flow_rows:
         dur = r.get("duration_s")
@@ -387,15 +390,13 @@ def download_xlsx():
             dur if dur is not None else ""
         ])
 
-    # Graph: Top flow durations (s) (NEW) -> après remplissage
     bardur = BarChart()
     bardur.title = "Top flow durations (s)"
     bardur.y_axis.title = "Seconds"
     bardur.x_axis.title = "Flow (src_host)"
-
-    maxrow = min(wsflows.max_row, 21)  # header + 20 flows
-    labels = Reference(wsflows, min_col=1, min_row=2, max_row=maxrow)     # src_host
-    data = Reference(wsflows, min_col=10, min_row=1, max_row=maxrow)      # duration_s
+    maxrow = min(wsflows.max_row, 21)
+    labels = Reference(wsflows, min_col=1, min_row=2, max_row=maxrow)
+    data = Reference(wsflows, min_col=10, min_row=1, max_row=maxrow)
     bardur.add_data(data, titles_from_data=True)
     bardur.set_categories(labels)
     wsflows.add_chart(bardur, "L2")
@@ -471,7 +472,6 @@ def download_xlsx():
     wsvol.append(["src_host", "volume_octets"])
     for host, vol in bytes_per_src.most_common():
         wsvol.append([host, vol])
-
     barvol = BarChart()
     barvol.title = "Top sources par volume"
     labels = Reference(wsvol, min_col=1, min_row=2, max_row=wsvol.max_row)
@@ -486,6 +486,23 @@ def download_xlsx():
     wb.save(buf)
     buf.seek(0)
     return send_file(buf, as_attachment=True, download_name="rapport_tcpdump.xlsx")
+
+# -----------------------------------------------------------------------------
+# Téléchargement Markdown
+# -----------------------------------------------------------------------------
+@app.route("/download/md")
+def download_md():
+    last_md = session.get("last_md")
+    if not last_md:
+        flash("Aucun rapport Markdown en mémoire.", "error")
+        return redirect(url_for("index"))
+
+    path = Path(last_md)
+    if not path.exists():
+        flash("Rapport Markdown introuvable.", "error")
+        return redirect(url_for("index"))
+
+    return send_file(path, as_attachment=True, download_name=path.name)
 
 # -----------------------------------------------------------------------------
 # Démarrage local

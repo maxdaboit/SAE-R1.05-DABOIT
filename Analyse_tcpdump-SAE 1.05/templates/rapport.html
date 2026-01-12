@@ -69,32 +69,43 @@
     {% endif %}
   </p>
 
+
+
   <!-- Boutons -->
-  <div class="toolbar">
-    <a class="btn" href="{{ url_for('download_csv') }}">
-      {% if session.get('lang','fr') == 'fr' %}
-        Télécharger CSV
-      {% else %}
-        Download CSVs
-      {% endif %}
-    </a>
+<div class="toolbar">
+  <a class="btn" href="{{ url_for('download_csv') }}">
+    {% if session.get('lang','fr') == 'fr' %}
+      Télécharger CSV
+    {% else %}
+      Download CSVs
+    {% endif %}
+  </a>
 
-    <a class="btn" href="{{ url_for('download_xlsx') }}">
-      {% if session.get('lang','fr') == 'fr' %}
-        Télécharger Excel
-      {% else %}
-        Download Excel
-      {% endif %}
-    </a>
+  <a class="btn" href="{{ url_for('download_xlsx') }}">
+    {% if session.get('lang','fr') == 'fr' %}
+      Télécharger Excel
+    {% else %}
+      Download Excel
+    {% endif %}
+  </a>
 
-    <a class="btn" href="{{ url_for('index') }}">
-      {% if session.get('lang','fr') == 'fr' %}
-        Nouvelle analyse
-      {% else %}
-        New analysis
-      {% endif %}
-    </a>
-  </div>
+  <a class="btn" href="{{ url_for('download_md') }}">
+    {% if session.get('lang','fr') == 'fr' %}
+      Télécharger le rapport Markdown
+    {% else %}
+      Download Markdown report
+    {% endif %}
+  </a>
+
+  <a class="btn" href="{{ url_for('index') }}">
+    {% if session.get('lang','fr') == 'fr' %}
+      Nouvelle analyse
+    {% else %}
+      New analysis
+    {% endif %}
+  </a>
+</div>
+
 
   <!-- Graphes (2 + 2) -->
   <section class="graphs-row">
